@@ -1,0 +1,71 @@
+apiVersion: harbor/v1alpha1
+kind: Application
+metadata:
+  id: onlyoffice
+  name: "ONLYOFFICE Docs"
+  description: "Online editors for documents, spreadsheets and presentations (ONLYOFFICE Document Server, community edition), used as the editor of a Nextcloud through its ONLYOFFICE connector."
+release:
+  revision: "1"
+  version: "9.4.0.1"
+deployment:
+  compose: compose.yaml
+  multiInstance: false
+  services:
+    documentserver: application
+# The editors run in an iframe inside Nextcloud's page (another origin), so the document server
+# needs its own HTTPS address: an https Nextcloud cannot embed or call an http one.
+endpoints:
+  web:
+    service: documentserver
+    containerPort: 80
+    scheme: http
+    exposure: direct
+    browserContext: secure
+# /healthcheck answers `true` without any login. The first start initialises the internal
+# PostgreSQL database and RabbitMQ and generates fonts, so the deadline is generous.
+health:
+  endpoint: web
+  path: /healthcheck
+  expectedStatus: [200]
+  timeoutSeconds: 10
+  deadlineSeconds: 600
+ui:
+  primaryEndpoint: web
+# The JWT secret Nextcloud must know. Harbor generates it at first install (32 bytes, hex), injects
+# it as JWT_SECRET and shows it ONCE in the install result (shown as "password"; the user name is
+# only a label). It is kept as the instance secret `provisioned-password`.
+provisionedCredentials:
+  service: documentserver
+  passwordEnv: JWT_SECRET
+  username: jwt-secret
+  note: "The password is the JWT secret: paste it into Nextcloud (ONLYOFFICE settings, Secret key)."
+setup:
+  endpoint: web
+  instructions: "Copy the value shown after the install: it is the JWT secret. Publish this app under its own public domain (Publishing), then in Nextcloud install the ONLYOFFICE app and set the document server address to https:// plus that domain and the secret key to that value. The package README has the occ commands."
+storage:
+  - id: data
+    composeVolume: data
+    purpose: "Document cache and converted files (/var/www/onlyoffice/Data)"
+    retention: retain
+  - id: logs
+    composeVolume: logs
+    purpose: "Document server logs"
+    retention: retain
+  - id: lib
+    composeVolume: lib
+    purpose: "Editor cache and generated files (/var/lib/onlyoffice)"
+    retention: retain
+  - id: db
+    composeVolume: db
+    purpose: "Internal PostgreSQL database (editing sessions, changes history)"
+    retention: retain
+  - id: fonts
+    composeVolume: fonts
+    purpose: "Extra fonts for the editors (/usr/share/fonts/truetype/custom)"
+    retention: retain
+presentation:
+  tagline: "Edit Office documents in your Nextcloud"
+  category: productivity
+  developer: "Ascensio System SIA (ONLYOFFICE), packaged for Harbor"
+  website: https://www.onlyoffice.com/docs
+  releaseNotes: "Revision 1: ONLYOFFICE Docs 9.4.0.1 community edition, JWT on, private-address documents allowed."
